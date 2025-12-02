@@ -1,36 +1,187 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GSSHG Financial Management System
 
-## Getting Started
+A comprehensive financial management system for weekly investments and loan repayments with 1% weekly interest rate over 10 weeks.
 
-First, run the development server:
+## Features
+
+- **User Authentication**: OTP-based email verification for users and password-based login for admins
+- **Member Management**: Create and manage member profiles with photos
+- **Savings Tracking**: Track weekly savings with transaction history
+- **Loan Management**: Manage loans with 1% weekly interest rate over 10 weeks
+- **Miscellaneous Transactions**: Track various financial transactions
+- **Events Management**: Create and manage events with photo uploads
+- **Monthly Statements**: Upload and view PDF monthly statements
+- **Role-Based Access**: Admin and User roles with different permissions
+
+## Tech Stack
+
+- **Framework**: Next.js 16
+- **Database**: MongoDB with Prisma ORM
+- **UI**: React, Tailwind CSS, shadcn/ui components
+- **Authentication**: JWT-based with OTP email verification
+- **Email**: Nodemailer for OTP and password emails
+
+## Setup Instructions
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```env
+# Database
+DATABASE_URL="mongodb://localhost:27017/gsshg"
+
+# JWT Secret
+JWT_SECRET="your-secret-key-change-in-production"
+
+# Admin Email (Admin uses OTP login same as users)
+ADMIN_EMAIL="admin@example.com"
+
+# Email Configuration for OTP
+# IMPORTANT: For Gmail, you MUST use an App Password, not your regular password
+#
+# Gmail Setup Steps:
+# 1. Enable 2-Step Verification: https://myaccount.google.com/security
+# 2. Generate App Password: https://myaccount.google.com/apppasswords
+# 3. Select "Mail" and "Other (Custom name)" → Enter "GSSHG"
+# 4. Copy the 16-character password and use it below
+#
+EMAIL_HOST="smtp.gmail.com"
+EMAIL_PORT="587"
+EMAIL_USER="your-email@gmail.com"
+EMAIL_PASS="xxxx xxxx xxxx xxxx"  # Use App Password for Gmail
+EMAIL_FROM="your-email@gmail.com"
+
+# Alternative Email Providers:
+# Outlook: EMAIL_HOST="smtp-mail.outlook.com", EMAIL_PORT="587"
+# Yahoo: EMAIL_HOST="smtp.mail.yahoo.com", EMAIL_PORT="587"
+# Custom: EMAIL_HOST="smtp.yourdomain.com", EMAIL_PORT="587" or "465"
+```
+
+### 3. Database Setup
+
+```bash
+# Generate Prisma Client
+npm run db:generate
+
+# Push schema to database
+npm run db:push
+```
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The application will be available at `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+kulu/
+├── app/
+│   ├── api/              # API routes
+│   ├── auth/             # Authentication pages
+│   ├── dashbaord/        # Dashboard pages
+│   └── layout.tsx        # Root layout
+├── components/
+│   ├── home/             # Home components
+│   ├── nav/              # Navigation components
+│   └── ui/               # shadcn UI components
+├── lib/
+│   ├── auth.ts           # Authentication utilities
+│   ├── prisma.ts         # Prisma client
+│   └── utils.ts          # Utility functions
+├── hooks/
+│   └── use-auth.tsx      # Auth hook
+├── middleware.ts         # Route protection
+└── prisma/
+    └── schema.prisma     # Database schema
+```
 
-## Learn More
+## Authentication
 
-To learn more about Next.js, take a look at the following resources:
+### Admin Login
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Admins use OTP login (same as users)
+- Admin email is set in `ADMIN_EMAIL` environment variable
+- Admin receives OTP via email to login
+- Only admin can create new users
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### User Login
 
-## Deploy on Vercel
+- Users enter their email
+- OTP is sent to their email
+- Users enter the OTP to login
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Financial System
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Weekly Investment System
+
+- Each user invests a set amount every week (e.g., Rs 100)
+- Users receive Rs 100 weekly for 10 weeks
+
+### Loan Repayment System
+
+- Loan amount accumulates simple interest at 1% per week
+- Users must pay back the principal loan amount plus interest in 10 weeks
+- Interest payment is made weekly along with the loan amount
+- Total payable weekly = weekly principal + 1% interest on remaining balance
+
+## API Routes
+
+- `/api/auth/send-otp` - Send OTP to email
+- `/api/auth/verify-otp` - Verify OTP and login
+- `/api/auth/login` - Password-based login
+- `/api/auth/logout` - Logout
+- `/api/auth/me` - Get current user
+- `/api/members` - CRUD operations for members
+- `/api/savings` - Savings transactions
+- `/api/loans` - Loan management
+- `/api/events` - Event management
+- `/api/statements` - Monthly statements
+- `/api/transactions` - Miscellaneous transactions
+
+## Permissions
+
+### Admin
+
+- Can create, edit, and delete all records
+- Can upload photos and PDFs
+- Full access to all features
+
+### User
+
+- Can only view details
+- Cannot modify any data
+- Read-only access
+
+## Development
+
+```bash
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Run Prisma Studio (Database GUI)
+npm run db:studio
+```
+
+## Notes
+
+- Make sure MongoDB is running before starting the application
+- Configure SMTP settings properly for email functionality
+- Change JWT_SECRET in production
+- Admin user is automatically created on first run if it doesn't exist

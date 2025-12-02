@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum TransactionType {
+  SAVINGS
+  LOAN
+  INTEREST
+  MISCELLANEOUS
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  name          String?
+  phone         String?
+  userId        String?   @unique // User ID for login
+  role          UserRole  @default(USER)
+  password      String?   // Hashed password for admin
+  otp           String?
+  otpExpires    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Member {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String    @unique // User ID for member
+  name          String
+  fatherName    String?
+  address1      String?
+  address2      String?
+  accountNumber String?   @unique
+  phone         String?
+  photo         String?   // URL to photo
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  savings       Savings[]
+  loans         Loan[]
+  transactions  Transaction[]
+
+  @@map("members")
+}
+
+model Savings {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  totalAmount   Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  transactions  SavingsTransaction[]
+
+  @@map("savings")
+}
+
+model SavingsTransaction {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  savingsId     String    @db.ObjectId
+  savings       Savings   @relation(fields: [savingsId], references: [id], onDelete: Cascade)
+  date          DateTime
+  amount        Float
+  total         Float     // Running total after this transaction
+  createdAt     DateTime  @default(now())
+
+  @@map("savings_transactions")
+}
+
+model Loan {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  principal     Float     // Original loan amount
+  remaining     Float     // Remaining balance
+  interestRate  Float     @default(1.0) // 1% per week
+  weeks         Int       @default(10) // 10 weeks repayment
+  currentWeek   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  transactions  LoanTransaction[]
+
+  @@map("loans")
+}
+
+model LoanTransaction {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  loanId        String    @db.ObjectId
+  loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  date          DateTime
+  amount        Float     // Principal payment
+  interest      Float     // Interest payment (1% of remaining)
+  remaining     Float     // Remaining balance after this payment
+  week          Int       // Week number (1-10)
+  createdAt     DateTime  @default(now())
+
+  @@map("loan_transactions")
+}
+
+model Transaction {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String          @db.ObjectId
+  member        Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type          TransactionType
+  date          DateTime
+  purpose       String?
+  amount        Float
+  photo         String?         // URL to uploaded photo
+  createdAt     DateTime        @default(now())
+
+  @@map("transactions")
+}
+
+model Event {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  date          DateTime
+  name          String
+  description   String?
+  photos        String[]  // Array of photo URLs
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("events")
+}
+
+model MonthlyStatement {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  month         Int       // 1-12
+  year          Int
+  pdfUrl        String?   // URL to PDF file
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([month, year], name: "month_year")
+  @@map("monthly_statements")
+}
+
