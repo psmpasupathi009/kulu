@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Home, FolderDot } from "lucide-react";
+import { Home } from "lucide-react";
 
 import { NavMain } from "@/components/home/nav-main";
 import { NavUser } from "@/components/home/nav-user";
@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-import { Users, PiggyBank, CreditCard, FileText, Calendar, FileSpreadsheet, Settings, UserCog } from "lucide-react"
+import { Users, PiggyBank, CreditCard, FileText, Calendar, FileSpreadsheet, Settings, UserCog, RotateCcw } from "lucide-react"
 
 const data = {
   navMain: [
@@ -49,6 +49,12 @@ const data = {
       title: "Loan Details",
       url: "/dashbaord/loans",
       icon: CreditCard,
+      items: [],
+    },
+    {
+      title: "Loan Cycles",
+      url: "/dashbaord/cycles",
+      icon: RotateCcw,
       items: [],
     },
     {

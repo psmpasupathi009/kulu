@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GSSHG - Financial Management System",
+  title: "KULU - Financial Management System",
   description: "Weekly investment and loan repayment system",
 };
 

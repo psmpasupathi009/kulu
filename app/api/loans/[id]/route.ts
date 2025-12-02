@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const cookieStore = await cookies()
@@ -20,10 +20,15 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
     const loan = await prisma.loan.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         member: true,
+        cycle: true,
+        sequence: true,
+        guarantor1: true,
+        guarantor2: true,
         transactions: {
           orderBy: { date: 'desc' },
         },

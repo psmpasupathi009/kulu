@@ -1,4 +1,4 @@
-# GSSHG Financial Management System
+# KULU Financial Management System
 
 A comprehensive financial management system for weekly investments and loan repayments with 1% weekly interest rate over 10 weeks.
 
@@ -35,7 +35,7 @@ Create a `.env` file in the root directory with the following variables:
 
 ```env
 # Database
-DATABASE_URL="mongodb://localhost:27017/gsshg"
+DATABASE_URL="mongodb://localhost:27017/kulu"
 
 # JWT Secret
 JWT_SECRET="your-secret-key-change-in-production"
@@ -49,7 +49,7 @@ ADMIN_EMAIL="admin@example.com"
 # Gmail Setup Steps:
 # 1. Enable 2-Step Verification: https://myaccount.google.com/security
 # 2. Generate App Password: https://myaccount.google.com/apppasswords
-# 3. Select "Mail" and "Other (Custom name)" → Enter "GSSHG"
+# 3. Select "Mail" and "Other (Custom name)" → Enter "KULU"
 # 4. Copy the 16-character password and use it below
 #
 EMAIL_HOST="smtp.gmail.com"

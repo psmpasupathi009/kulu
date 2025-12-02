@@ -22,6 +22,18 @@ enum TransactionType {
   MISCELLANEOUS
 }
 
+enum InterestMethod {
+  SIMPLE      // Flat 1% per week on original principal
+  DECLINING   // 1% per week on remaining balance (recommended)
+}
+
+enum LoanStatus {
+  PENDING     // Loan approved but not disbursed
+  ACTIVE      // Loan disbursed and being repaid
+  COMPLETED   // Fully repaid
+  DEFAULTED   // Defaulted on payments
+}
+
 model User {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   email         String    @unique
@@ -54,6 +66,9 @@ model Member {
   savings       Savings[]
   loans         Loan[]
   transactions  Transaction[]
+  loanSequences LoanSequence[]
+  guaranteedLoans1 Loan[] @relation("LoanGuarantor1")
+  guaranteedLoans2 Loan[] @relation("LoanGuarantor2")
 
   @@map("members")
 }
@@ -83,15 +98,66 @@ model SavingsTransaction {
   @@map("savings_transactions")
 }
 
+model LoanCycle {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleNumber   Int       @unique // Cycle number (1, 2, 3...)
+  startDate     DateTime
+  endDate       DateTime?
+  totalMembers  Int       @default(10)
+  weeklyAmount  Float     @default(100) // ₹100 per member per week
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  loans         Loan[]
+  sequences     LoanSequence[]
+  groupFund     GroupFund?
+
+  @@map("loan_cycles")
+}
+
+model LoanSequence {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleId       String    @db.ObjectId
+  cycle         LoanCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  week          Int       // Week number in cycle (1-10)
+  loanAmount    Float     // Amount received this week
+  status        String    @default("PENDING") // PENDING, DISBURSED, COMPLETED
+  disbursedAt   DateTime?
+  loan          Loan?     @relation("LoanSequenceLoan") // Reference to actual loan if created
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([cycleId, week])
+  @@map("loan_sequences")
+}
+
 model Loan {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   memberId      String    @db.ObjectId
   member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  cycleId       String?   @db.ObjectId
+  cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  sequenceId    String?   @unique @db.ObjectId
+  sequence      LoanSequence? @relation("LoanSequenceLoan", fields: [sequenceId], references: [id], onDelete: SetNull)
   principal     Float     // Original loan amount
   remaining     Float     // Remaining balance
   interestRate  Float     @default(1.0) // 1% per week
+  interestMethod InterestMethod @default(DECLINING) // Simple or Declining balance
   weeks         Int       @default(10) // 10 weeks repayment
   currentWeek   Int       @default(0)
+  status        LoanStatus @default(PENDING)
+  totalInterest Float     @default(0) // Total interest paid
+  totalPrincipalPaid Float @default(0) // Total principal paid
+  disbursedAt   DateTime? // When loan was disbursed
+  completedAt   DateTime? // When loan was fully repaid
+  guarantor1Id  String?   @db.ObjectId
+  guarantor1    Member?   @relation("LoanGuarantor1", fields: [guarantor1Id], references: [id])
+  guarantor2Id  String?   @db.ObjectId
+  guarantor2    Member?   @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
+  latePaymentPenalty Float @default(0) // Additional 0.5% per week delayed
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -150,5 +216,21 @@ model MonthlyStatement {
 
   @@unique([month, year], name: "month_year")
   @@map("monthly_statements")
+}
+
+model GroupFund {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleId       String?   @unique @db.ObjectId
+  cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  investmentPool Float    @default(0) // Accumulated weekly contributions
+  interestPool  Float     @default(0) // Collected interest payments
+  emergencyReserve Float  @default(0) // 10% of interest pool
+  insuranceFund Float     @default(0) // 5% of each loan for default protection
+  adminFee      Float     @default(0) // 0.5% for record-keeping
+  totalFunds    Float     @default(0) // Total available funds
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("group_funds")
 }
 

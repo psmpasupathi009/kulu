@@ -3,13 +3,17 @@ import { prisma } from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
-import { calculateWeeklyPayment } from '@/lib/utils'
 
 const createLoanSchema = z.object({
   memberId: z.string(),
   principal: z.number().positive(),
   weeks: z.number().int().positive().default(10),
   interestRate: z.number().default(1.0),
+  interestMethod: z.enum(['SIMPLE', 'DECLINING']).default('DECLINING'),
+  cycleId: z.string().optional(),
+  sequenceId: z.string().optional(),
+  guarantor1Id: z.string().optional(),
+  guarantor2Id: z.string().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -29,10 +33,15 @@ export async function GET(request: NextRequest) {
     const loans = await prisma.loan.findMany({
       include: {
         member: true,
+        cycle: true,
+        sequence: true,
+        guarantor1: true,
+        guarantor2: true,
         transactions: {
           orderBy: { date: 'desc' },
         },
       },
+      orderBy: { createdAt: 'desc' },
     })
 
     return NextResponse.json({ loans }, { status: 200 })
@@ -72,7 +81,20 @@ export async function POST(request: NextRequest) {
         remaining: data.principal,
         weeks: data.weeks,
         interestRate: data.interestRate,
+        interestMethod: data.interestMethod,
         currentWeek: 0,
+        status: 'PENDING',
+        cycleId: data.cycleId,
+        sequenceId: data.sequenceId,
+        guarantor1Id: data.guarantor1Id,
+        guarantor2Id: data.guarantor2Id,
+      },
+      include: {
+        member: true,
+        cycle: true,
+        sequence: true,
+        guarantor1: true,
+        guarantor2: true,
       },
     })
 

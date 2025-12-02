@@ -79,15 +79,6 @@ export async function POST(request: NextRequest) {
             pdfUrl: data.pdfUrl,
           },
         })
-      update: {
-        pdfUrl: data.pdfUrl,
-      },
-      create: {
-        month: data.month,
-        year: data.year,
-        pdfUrl: data.pdfUrl,
-      },
-    })
 
     return NextResponse.json({ statement }, { status: 201 })
   } catch (error) {

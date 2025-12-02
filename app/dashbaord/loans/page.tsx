@@ -17,6 +17,10 @@ interface Loan {
   remaining: number
   currentWeek: number
   weeks: number
+  status: string
+  cycle?: {
+    cycleNumber: number
+  } | null
 }
 
 export default function LoansPage() {
@@ -64,14 +68,16 @@ export default function LoansPage() {
                 <TableHead>Member Name</TableHead>
                 <TableHead>Principal</TableHead>
                 <TableHead>Remaining</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Week</TableHead>
+                <TableHead>Cycle</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loans.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No loans found
                   </TableCell>
                 </TableRow>
@@ -82,7 +88,17 @@ export default function LoansPage() {
                     <TableCell className="font-medium">{loan.member.name}</TableCell>
                     <TableCell>₹{loan.principal.toFixed(2)}</TableCell>
                     <TableCell>₹{loan.remaining.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        loan.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                        loan.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800' :
+                        loan.status === 'DEFAULTED' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {loan.status}
+                      </span>
+                    </TableCell>
                     <TableCell>{loan.currentWeek}/{loan.weeks}</TableCell>
+                    <TableCell>{loan.cycle ? `#${loan.cycle.cycleNumber}` : '-'}</TableCell>
                     <TableCell>
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashbaord/loans/${loan.id}`}>View Details</Link>
