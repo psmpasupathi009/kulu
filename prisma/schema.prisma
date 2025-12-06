@@ -1,0 +1,345 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum TransactionType {
+  SAVINGS
+  LOAN
+  INTEREST
+  MISCELLANEOUS
+  COLLECTION  // Weekly collection payment
+  PENALTY     // Penalty payment
+}
+
+enum InterestMethod {
+  SIMPLE      // Flat 1% per week on original principal
+  DECLINING   // 1% per week on remaining balance (recommended)
+}
+
+enum LoanStatus {
+  PENDING     // Loan approved but not disbursed
+  ACTIVE      // Loan disbursed and being repaid
+  COMPLETED   // Fully repaid
+  DEFAULTED   // Defaulted on payments
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  name          String?
+  phone         String?
+  userId        String?   @unique // User ID for login
+  role          UserRole  @default(USER)
+  password      String?   // Hashed password for admin
+  otp           String?
+  otpExpires    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Member {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String    @unique // User ID for member
+  name          String
+  fatherName    String?
+  address1      String?
+  address2      String?
+  accountNumber String?   @unique
+  phone         String?
+  photo         String?   // URL to photo
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  savings       Savings[]
+  loans         Loan[]
+  transactions  Transaction[]
+  loanSequences LoanSequence[]
+  guaranteedLoans1 Loan[] @relation("LoanGuarantor1")
+  guaranteedLoans2 Loan[] @relation("LoanGuarantor2")
+  collectionPayments CollectionPayment[]
+  groupMembers  GroupMember[] // Memberships in groups
+
+  @@map("members")
+}
+
+model Savings {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  totalAmount   Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  transactions  SavingsTransaction[]
+
+  @@map("savings")
+}
+
+model SavingsTransaction {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  savingsId     String    @db.ObjectId
+  savings       Savings   @relation(fields: [savingsId], references: [id], onDelete: Cascade)
+  date          DateTime
+  amount        Float
+  total         Float     // Running total after this transaction
+  createdAt     DateTime  @default(now())
+
+  @@map("savings_transactions")
+}
+
+model Group {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String    // Group name
+  adminId       String    @db.ObjectId // Admin/Organizer user ID
+  weeklyAmount  Float?    // Optional default/suggested amount (members can contribute different amounts)
+  interestRate  Float     @default(2.0) // 2% weekly interest
+  loanWeeks     Int       @default(10) // 10 weeks repayment term
+  penaltyLoanPercent Float @default(10.0) // 10% penalty on loan principal
+  penaltyInterestPercent Float @default(10.0) // 10% penalty on interest
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  members       GroupMember[] // Dynamic members list
+  cycles        LoanCycle[]
+  collections   WeeklyCollection[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  groupId       String    @db.ObjectId
+  group         Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  joiningWeek   Int       // Week number when member joined (1, 2, 3...)
+  joiningDate   DateTime  // Actual date when member joined
+  weeklyAmount  Float     @default(100) // Individual member's weekly contribution amount
+  isActive      Boolean   @default(true) // Can be deactivated without deleting
+  totalContributed Float   @default(0) // Total amount contributed so far
+  totalReceived   Float    @default(0) // Total amount received as loans
+  benefitAmount  Float     @default(0) // Amount member is eligible to receive based on joining week
+  totalInterestReceived Float @default(0) // Total interest received from completed loans
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  collectionPayments CollectionPayment[]
+  interestDistributions InterestDistribution[]
+
+  @@unique([groupId, memberId])
+  @@map("group_members")
+}
+
+model LoanCycle {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleNumber   Int       // Cycle number (1, 2, 3...)
+  groupId       String?   @db.ObjectId
+  group         Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  startDate     DateTime
+  endDate       DateTime?
+  weeklyAmount  Float     @default(100) // ₹100 per member per week
+  currentWeek   Int       @default(0) // Current week in cycle
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  loans         Loan[]
+  sequences     LoanSequence[]
+  groupFund     GroupFund?
+  collections   WeeklyCollection[]
+
+  @@unique([groupId, cycleNumber])
+  @@map("loan_cycles")
+}
+
+model LoanSequence {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleId       String    @db.ObjectId
+  cycle         LoanCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  week          Int       // Week number in cycle (1-10)
+  loanAmount    Float     // Amount received this week
+  status        String    @default("PENDING") // PENDING, DISBURSED, COMPLETED
+  disbursedAt   DateTime?
+  loan          Loan?     @relation("LoanSequenceLoan") // Reference to actual loan if created
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([cycleId, week])
+  @@map("loan_sequences")
+}
+
+model Loan {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  cycleId       String?   @db.ObjectId
+  cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  sequenceId    String?   @unique @db.ObjectId
+  sequence      LoanSequence? @relation("LoanSequenceLoan", fields: [sequenceId], references: [id], onDelete: SetNull)
+  principal     Float     // Original loan amount
+  remaining     Float     // Remaining balance
+  interestRate  Float     @default(2.0) // Interest rate per week
+  interestMethod InterestMethod @default(DECLINING) // Simple or Declining balance
+  weeks         Int       @default(10) // Loan duration in weeks
+  currentWeek   Int       @default(0)
+  status        LoanStatus @default(PENDING)
+  reason        String?   // Reason/purpose for the loan
+  totalInterest Float     @default(0) // Total interest paid
+  totalPrincipalPaid Float @default(0) // Total principal paid
+  totalPenalty  Float     @default(0) // Total penalty paid
+  disbursedAt   DateTime? // When loan was disbursed
+  completedAt   DateTime? // When loan was fully repaid
+  guarantor1Id  String?   @db.ObjectId
+  guarantor1    Member?   @relation("LoanGuarantor1", fields: [guarantor1Id], references: [id])
+  guarantor2Id  String?   @db.ObjectId
+  guarantor2    Member?   @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
+  latePaymentPenalty Float @default(0) // Additional penalty per week delayed
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  transactions  LoanTransaction[]
+  interestDistributions InterestDistribution[]
+
+  @@map("loans")
+}
+
+model LoanTransaction {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  loanId        String    @db.ObjectId
+  loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  date          DateTime
+  amount        Float     // Principal payment
+  interest      Float     // Interest payment (2% of remaining)
+  penalty       Float     @default(0) // Penalty amount paid
+  remaining     Float     // Remaining balance after this payment
+  week          Int       // Week number (1-10)
+  createdAt     DateTime  @default(now())
+
+  @@map("loan_transactions")
+}
+
+model WeeklyCollection {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleId       String    @db.ObjectId
+  cycle         LoanCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  groupId       String?   @db.ObjectId
+  group         Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  week          Int       // Week number in cycle
+  collectionDate DateTime  // Date of collection (typically Friday)
+  totalCollected Float     @default(0) // Total collected from all active members
+  expectedAmount Float     @default(0) // Expected amount based on active members
+  activeMemberCount Int    @default(0) // Number of active members for this week
+  isCompleted   Boolean   @default(false) // All active members paid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments      CollectionPayment[]
+
+  @@unique([cycleId, week])
+  @@map("weekly_collections")
+}
+
+model CollectionPayment {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  collectionId  String    @db.ObjectId
+  collection    WeeklyCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  memberId      String    @db.ObjectId
+  member        Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  groupMemberId String?   @db.ObjectId
+  groupMember   GroupMember? @relation(fields: [groupMemberId], references: [id], onDelete: SetNull)
+  amount        Float     @default(100) // Weekly contribution amount
+  paymentDate   DateTime
+  paymentMethod String?   // UPI, Razorpay, Cash, etc.
+  status        String    @default("PENDING") // PENDING, PAID, OVERDUE
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([collectionId, memberId])
+  @@map("collection_payments")
+}
+
+model Transaction {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  memberId      String          @db.ObjectId
+  member        Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type          TransactionType
+  date          DateTime
+  purpose       String?
+  amount        Float
+  photo         String?         // URL to uploaded photo
+  createdAt     DateTime        @default(now())
+
+  @@map("transactions")
+}
+
+model Event {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  date          DateTime
+  name          String
+  description   String?
+  photos        String[]  // Array of photo URLs
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("events")
+}
+
+model MonthlyStatement {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  month         Int       // 1-12
+  year          Int
+  pdfUrl        String?   // URL to PDF file
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([month, year], name: "month_year")
+  @@map("monthly_statements")
+}
+
+model GroupFund {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  cycleId       String?   @unique @db.ObjectId
+  cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  investmentPool Float    @default(0) // Accumulated weekly contributions
+  interestPool  Float     @default(0) // Collected interest payments
+  emergencyReserve Float  @default(0) // 10% of interest pool
+  insuranceFund Float     @default(0) // 5% of each loan for default protection
+  adminFee      Float     @default(0) // 0.5% for record-keeping
+  totalFunds    Float     @default(0) // Total available funds
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("group_funds")
+}
+
+model InterestDistribution {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  loanId        String    @db.ObjectId
+  loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  groupMemberId String    @db.ObjectId
+  groupMember   GroupMember @relation(fields: [groupMemberId], references: [id], onDelete: Cascade)
+  amount        Float     // Interest amount distributed to this member
+  distributionDate DateTime @default(now()) // When interest was distributed
+  createdAt     DateTime  @default(now())
+
+  @@map("interest_distributions")
+}
+

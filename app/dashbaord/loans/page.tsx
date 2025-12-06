@@ -1,0 +1,119 @@
+"use client"
+
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import Link from 'next/link'
+
+interface Loan {
+  id: string
+  member: {
+    id: string
+    name: string
+    userId: string
+  }
+  principal: number
+  remaining: number
+  currentWeek: number
+  weeks: number
+  status: string
+  cycle?: {
+    cycleNumber: number
+  } | null
+}
+
+export default function LoansPage() {
+  const [loans, setLoans] = useState<Loan[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchLoans()
+  }, [])
+
+  const fetchLoans = async () => {
+    try {
+      const response = await fetch('/api/loans')
+      if (response.ok) {
+        const data = await response.json()
+        setLoans(data.loans)
+      }
+    } catch (error) {
+      console.error('Error fetching loans:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
+
+  return (
+    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold">Loan Details</h1>
+        <p className="text-sm sm:text-base text-muted-foreground mt-1">View and manage loans</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Member Loans</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 sm:p-6">
+          <div className="overflow-x-auto">
+            <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>S.No</TableHead>
+                <TableHead>Member Name</TableHead>
+                <TableHead>Principal</TableHead>
+                <TableHead>Remaining</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Week</TableHead>
+                <TableHead>Cycle</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loans.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    No loans found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                loans.map((loan, index) => (
+                  <TableRow key={loan.id}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell className="font-medium">{loan.member.name}</TableCell>
+                    <TableCell>₹{loan.principal.toFixed(2)}</TableCell>
+                    <TableCell>₹{loan.remaining.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 text-xs rounded whitespace-nowrap ${
+                        loan.status === 'COMPLETED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                        loan.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                        loan.status === 'DEFAULTED' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                      }`}>
+                        {loan.status}
+                      </span>
+                    </TableCell>
+                    <TableCell>{loan.currentWeek}/{loan.weeks}</TableCell>
+                    <TableCell>{loan.cycle ? `#${loan.cycle.cycleNumber}` : '-'}</TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/dashbaord/loans/${loan.id}`}>View Details</Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
