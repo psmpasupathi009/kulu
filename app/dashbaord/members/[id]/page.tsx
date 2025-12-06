@@ -43,8 +43,9 @@ interface Member {
   address1?: string;
   address2?: string;
   accountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
   phone?: string;
-  photo?: string;
 }
 
 export default function MemberDetailPage() {
@@ -61,6 +62,8 @@ export default function MemberDetailPage() {
     address1: "",
     address2: "",
     accountNumber: "",
+    ifscCode: "",
+    upiId: "",
     phone: "",
   });
   const [error, setError] = useState("");
@@ -87,6 +90,8 @@ export default function MemberDetailPage() {
           address1: data.member.address1 || "",
           address2: data.member.address2 || "",
           accountNumber: data.member.accountNumber || "",
+          ifscCode: data.member.ifscCode || "",
+          upiId: data.member.upiId || "",
           phone: data.member.phone || "",
         });
       }
@@ -128,6 +133,8 @@ export default function MemberDetailPage() {
           address1: formData.address1.trim() || undefined,
           address2: formData.address2.trim() || undefined,
           accountNumber: formData.accountNumber.trim() || undefined,
+          ifscCode: formData.ifscCode.trim() || undefined,
+          upiId: formData.upiId.trim() || undefined,
           phone: formData.phone.trim() || undefined,
         }),
       });
@@ -381,7 +388,7 @@ export default function MemberDetailPage() {
             <div>
               <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
-                Account Number
+                Bank Account Number
               </label>
               {isEditing ? (
                 <Input
@@ -390,10 +397,62 @@ export default function MemberDetailPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, accountNumber: e.target.value })
                   }
+                  placeholder="1234567890"
                 />
               ) : (
                 <p className="text-lg font-mono">
                   {member.accountNumber || "-"}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                IFSC Code
+              </label>
+              {isEditing ? (
+                <Input
+                  type="text"
+                  value={formData.ifscCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ifscCode: e.target.value.toUpperCase() })
+                  }
+                  placeholder="SBIN0001234"
+                  maxLength={11}
+                />
+              ) : (
+                <p className="text-lg font-mono">
+                  {member.ifscCode || "-"}
+                </p>
+              )}
+              {!isEditing && member.ifscCode && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Required for bank transfer loan disbursement
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                UPI ID
+              </label>
+              {isEditing ? (
+                <Input
+                  type="text"
+                  value={formData.upiId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, upiId: e.target.value })
+                  }
+                  placeholder="name@paytm or phone@upi"
+                />
+              ) : (
+                <p className="text-lg">
+                  {member.upiId || "-"}
+                </p>
+              )}
+              {!isEditing && member.upiId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Used for UPI loan disbursement
                 </p>
               )}
             </div>

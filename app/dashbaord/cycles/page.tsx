@@ -71,10 +71,6 @@ interface LoanCycle {
   sequences: LoanSequence[];
   groupFund?: {
     investmentPool: number;
-    interestPool: number;
-    emergencyReserve: number;
-    insuranceFund: number;
-    adminFee: number;
     totalFunds: number;
   } | null;
 }
@@ -94,6 +90,7 @@ export default function CyclesPage() {
   const [disburseForm, setDisburseForm] = useState({
     guarantor1Id: "",
     guarantor2Id: "",
+    disbursementMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
   const [editingCycle, setEditingCycle] = useState<string | null>(null);
   const [deletingCycle, setDeletingCycle] = useState<string | null>(null);
@@ -218,7 +215,7 @@ export default function CyclesPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Loan Cycles</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Manage ROSCA loan rotation cycles
+            Manage loan cycles
           </p>
         </div>
         {user?.role === "ADMIN" && (
@@ -248,7 +245,7 @@ export default function CyclesPage() {
       {cycles.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            No cycles found. Create a new cycle to start the ROSCA rotation.
+            No cycles found. Create a new cycle to start giving loans.
           </CardContent>
         </Card>
       ) : (
@@ -312,36 +309,6 @@ export default function CyclesPage() {
                     </p>
                     <p className="font-medium">
                       ₹{cycle.groupFund.investmentPool.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Interest Pool
-                    </p>
-                    <p className="font-medium">
-                      ₹{cycle.groupFund.interestPool.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Emergency Reserve
-                    </p>
-                    <p className="font-medium">
-                      ₹{cycle.groupFund.emergencyReserve.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Insurance Fund
-                    </p>
-                    <p className="font-medium">
-                      ₹{cycle.groupFund.insuranceFund.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Admin Fee</p>
-                    <p className="font-medium">
-                      ₹{cycle.groupFund.adminFee.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -412,6 +379,7 @@ export default function CyclesPage() {
                                       setDisburseForm({
                                         guarantor1Id: "",
                                         guarantor2Id: "",
+                                        disbursementMethod: "",
                                       });
                                     }}>
                                     Disburse
@@ -509,6 +477,26 @@ export default function CyclesPage() {
                     Second co-signer for this loan
                   </FieldDescription>
                 </Field>
+                <Field>
+                  <FieldLabel>Disbursement Method</FieldLabel>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={disburseForm.disbursementMethod}
+                    onChange={(e) =>
+                      setDisburseForm({
+                        ...disburseForm,
+                        disbursementMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER" | "",
+                      })
+                    }>
+                    <option value="">Select method</option>
+                    <option value="CASH">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                  <FieldDescription>
+                    Method used to disburse the loan amount
+                  </FieldDescription>
+                </Field>
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
@@ -519,6 +507,7 @@ export default function CyclesPage() {
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
                             sequenceId: disbursingSequence,
+                            disbursementMethod: disburseForm.disbursementMethod || undefined,
                             guarantor1Id:
                               disburseForm.guarantor1Id || undefined,
                             guarantor2Id:

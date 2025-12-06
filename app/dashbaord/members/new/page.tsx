@@ -43,6 +43,8 @@ export default function NewMemberPage() {
     address1: "",
     address2: "",
     accountNumber: "",
+    ifscCode: "",
+    upiId: "",
     phone: "",
   });
   const [error, setError] = useState("");
@@ -155,6 +157,8 @@ export default function NewMemberPage() {
           address1: formData.address1.trim() || undefined,
           address2: formData.address2.trim() || undefined,
           accountNumber: formData.accountNumber.trim() || undefined,
+          ifscCode: formData.ifscCode.trim() || undefined,
+          upiId: formData.upiId.trim() || undefined,
           phone: formData.phone.trim() || undefined,
         }),
       });
@@ -356,19 +360,58 @@ export default function NewMemberPage() {
               <Field>
                 <FieldLabel htmlFor="accountNumber">
                   <CreditCard className="mr-2 h-4 w-4 inline" />
-                  Account Number
+                  Bank Account Number
                 </FieldLabel>
                 <Input
                   id="accountNumber"
                   type="text"
-                  placeholder="ACC123456"
+                  placeholder="1234567890"
                   value={formData.accountNumber}
                   onChange={(e) =>
                     setFormData({ ...formData, accountNumber: e.target.value })
                   }
                 />
                 <FieldDescription>
-                  Bank account number (optional, must be unique)
+                  Bank account number for loan disbursement (optional)
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="ifscCode">
+                  <Building2 className="mr-2 h-4 w-4 inline" />
+                  IFSC Code
+                </FieldLabel>
+                <Input
+                  id="ifscCode"
+                  type="text"
+                  placeholder="SBIN0001234"
+                  value={formData.ifscCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ifscCode: e.target.value.toUpperCase() })
+                  }
+                  maxLength={11}
+                />
+                <FieldDescription>
+                  IFSC code for bank transfers (optional, required if using bank transfer)
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="upiId">
+                  <CreditCard className="mr-2 h-4 w-4 inline" />
+                  UPI ID
+                </FieldLabel>
+                <Input
+                  id="upiId"
+                  type="text"
+                  placeholder="name@paytm or phone@upi"
+                  value={formData.upiId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, upiId: e.target.value })
+                  }
+                />
+                <FieldDescription>
+                  UPI ID for UPI transfers (optional, e.g., name@paytm, phone@upi)
                 </FieldDescription>
               </Field>
 

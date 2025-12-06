@@ -39,14 +39,12 @@ interface MemberProfile {
     name: string;
     email: string | null;
     phone: string | null;
-    photo: string | null;
   };
   summary: {
     totalSavings: number;
     totalContributions: number;
     totalLoansReceived: number;
     totalLoansRemaining: number;
-    totalInterestReceived: number;
     activeLoansCount: number;
     completedLoansCount: number;
     groupsCount: number;
@@ -97,7 +95,6 @@ interface MemberProfile {
     totalContributed: number;
     totalReceived: number;
     benefitAmount: number;
-    totalInterestReceived: number;
     collections: Array<{
       id: string;
       amount: number;
@@ -189,16 +186,7 @@ export default function ProfilePage() {
     return true;
   });
 
-  // Filter interest distributions
-  const filteredInterest = profile.interestDistributions.filter((dist) => {
-    if (filter === "group" && selectedGroup !== "all") {
-      return dist.loan.cycle?.group?.id === selectedGroup;
-    }
-    if (filter === "loan" && selectedLoan !== "all") {
-      return dist.loan.id === selectedLoan;
-    }
-    return true;
-  });
+  // No interest distributions
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -206,7 +194,7 @@ export default function ProfilePage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">My Profile</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            View your savings, loans, groups, and interest details
+            View your savings, loans, and groups
           </p>
         </div>
       </div>
@@ -239,19 +227,6 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Interest Received
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              ₹{profile.summary.totalInterestReceived.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -341,14 +316,6 @@ export default function ProfilePage() {
                         </p>
                         <p className="font-medium">
                           ₹{gm.totalContributed.toFixed(2)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Interest Received
-                        </p>
-                        <p className="font-medium text-green-600">
-                          ₹{gm.totalInterestReceived.toFixed(2)}
                         </p>
                       </div>
                     </div>
@@ -470,58 +437,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Interest Distributions */}
-      {filteredInterest.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Interest Received</CardTitle>
-            <CardDescription>
-              Interest distributions from completed loans
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Loan Amount</TableHead>
-                    <TableHead>Group</TableHead>
-                    <TableHead>Interest Received</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInterest.map((dist) => (
-                    <TableRow key={dist.id}>
-                      <TableCell>
-                        {format(new Date(dist.distributionDate), "dd/MM/yyyy")}
-                      </TableCell>
-                      <TableCell>₹{dist.loan.principal.toFixed(2)}</TableCell>
-                      <TableCell>
-                        {dist.loan.cycle?.group?.name || "-"}
-                      </TableCell>
-                      <TableCell className="font-semibold text-green-600">
-                        ₹{dist.amount.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">Total Interest Received:</span>
-                <span className="text-lg font-bold text-green-600">
-                  ₹
-                  {filteredInterest
-                    .reduce((sum, d) => sum + d.amount, 0)
-                    .toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Savings */}
       {profile.savings.length > 0 && (

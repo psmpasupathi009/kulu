@@ -40,16 +40,6 @@ export async function GET(
         transactions: {
           orderBy: { date: "desc" },
         },
-        interestDistributions: {
-          include: {
-            groupMember: {
-              include: {
-                member: true,
-              },
-            },
-          },
-          orderBy: { distributionDate: "desc" },
-        },
       },
     });
 

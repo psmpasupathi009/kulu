@@ -7,6 +7,7 @@ import { z } from "zod";
 const disburseLoanSchema = z.object({
   sequenceId: z.string(),
   disbursedAt: z.string().optional(),
+  disbursementMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(), // Payment method for disbursement
   guarantor1Id: z.string().optional(),
   guarantor2Id: z.string().optional(),
 });
@@ -71,14 +72,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get cycle with group to determine interest rate
+    // Get cycle with group to determine loan weeks
     const cycle = await prisma.loanCycle.findUnique({
       where: { id: sequence.cycleId },
       include: { group: true },
     });
 
-    // ROSCA: 2% interest rate, 10 weeks repayment
-    const interestRate = cycle?.group?.interestRate || 2.0;
+    // Simple flow: 10 weeks repayment, no interest
     const loanWeeks = cycle?.group?.loanWeeks || 10;
 
     // Create loan
@@ -89,12 +89,11 @@ export async function POST(request: NextRequest) {
         sequenceId: sequence.id,
         principal: sequence.loanAmount,
         remaining: sequence.loanAmount,
-        interestRate: interestRate, // 2% per week for ROSCA
-        interestMethod: "DECLINING", // Recommended method
-        weeks: loanWeeks, // 10 weeks for ROSCA
+        weeks: loanWeeks, // 10 weeks
         currentWeek: 0,
         status: "ACTIVE",
         disbursedAt: new Date(data.disbursedAt || new Date()),
+        disbursementMethod: data.disbursementMethod || null,
         guarantor1Id: data.guarantor1Id || null,
         guarantor2Id: data.guarantor2Id || null,
       },

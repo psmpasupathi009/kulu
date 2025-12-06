@@ -7,7 +7,7 @@ import { TransactionType } from "@prisma/client";
 
 const createTransactionSchema = z.object({
   memberId: z.string(),
-  type: z.enum(["SAVINGS", "LOAN", "INTEREST", "MISCELLANEOUS"]),
+  type: z.enum(["SAVINGS", "LOAN", "MISCELLANEOUS", "COLLECTION"]),
   date: z.string(),
   purpose: z.string().optional(),
   amount: z.number().positive(),

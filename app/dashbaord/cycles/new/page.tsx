@@ -53,10 +53,10 @@ export default function NewCyclePage() {
     groupId: "",
     memberId: "",
     loanAmount: "",
-    interestRate: "2.0",
     loanWeeks: "10",
     reason: "",
     disbursedAt: new Date().toISOString().split("T")[0],
+    disbursementMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
     guarantor1Id: "",
     guarantor2Id: "",
   });
@@ -75,10 +75,10 @@ export default function NewCyclePage() {
     if (formData.groupId) {
       fetchGroupMembers(formData.groupId);
     } else {
-      setGroupMembers([]);
-      setFormData((prev) => ({ ...prev, memberId: "" }));
+      // If no group selected, use all members
+      setGroupMembers(allMembers);
     }
-  }, [formData.groupId]);
+  }, [formData.groupId, allMembers]);
 
   const fetchGroups = async () => {
     try {
@@ -179,12 +179,6 @@ export default function NewCyclePage() {
     setSubmitting(true);
 
     // Validation
-    if (!formData.groupId) {
-      setError("Please select a group");
-      setSubmitting(false);
-      return;
-    }
-
     if (!formData.memberId) {
       setError("Please select a member");
       setSubmitting(false);
@@ -197,11 +191,7 @@ export default function NewCyclePage() {
       return;
     }
 
-    if (!formData.interestRate || parseFloat(formData.interestRate) <= 0) {
-      setError("Please enter a valid interest rate");
-      setSubmitting(false);
-      return;
-    }
+    // No interest rate validation needed
 
     if (!formData.loanWeeks || parseInt(formData.loanWeeks) <= 0) {
       setError("Please enter a valid loan duration");
@@ -217,13 +207,13 @@ export default function NewCyclePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupId: formData.groupId,
+          groupId: formData.groupId || undefined,
           memberId: formData.memberId,
           loanAmount: parseFloat(formData.loanAmount),
-          interestRate: parseFloat(formData.interestRate),
           loanWeeks: parseInt(formData.loanWeeks),
           reason: formData.reason || undefined,
           disbursedAt: disbursedAt.toISOString(),
+          disbursementMethod: formData.disbursementMethod || undefined,
           guarantor1Id: formData.guarantor1Id || undefined,
           guarantor2Id: formData.guarantor2Id || undefined,
         }),
@@ -268,15 +258,11 @@ export default function NewCyclePage() {
     return <div>Loading...</div>;
   }
 
-  // Calculate total interest
+  // Calculate total repayment (no interest)
   const loanAmount = parseFloat(formData.loanAmount) || 0;
-  const interestRate = parseFloat(formData.interestRate) || 0;
   const loanWeeks = parseInt(formData.loanWeeks) || 0;
-  const totalInterest =
-    loanAmount && interestRate && loanWeeks
-      ? (loanAmount * interestRate * loanWeeks) / 100
-      : 0;
-  const totalRepayment = loanAmount + totalInterest;
+  const totalInterest = 0; // No interest
+  const totalRepayment = loanAmount; // Only principal
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -314,10 +300,7 @@ export default function NewCyclePage() {
         <CardHeader>
           <CardTitle>Loan Details</CardTitle>
           <CardDescription>
-            Select the group providing the loan, member receiving it (must be a
-            member of that group), and enter loan details. The loan will be
-            disbursed immediately upon submission. Loans are group-based and
-            members receive benefits based on their joining week.
+            Select a member and enter loan details. Optionally select a group if this loan is part of a group cycle. The loan will be disbursed immediately upon submission.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
@@ -326,8 +309,7 @@ export default function NewCyclePage() {
               <Field>
                 <FieldLabel htmlFor="groupId">
                   <Building2 className="mr-2 h-4 w-4 inline" />
-                  Group (Providing Loan){" "}
-                  <span className="text-destructive">*</span>
+                  Group (Optional)
                 </FieldLabel>
                 <select
                   id="groupId"
@@ -335,9 +317,8 @@ export default function NewCyclePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, groupId: e.target.value })
                   }
-                  required
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">Select a group</option>
+                  <option value="">No group (Simple loan)</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name}
@@ -345,7 +326,7 @@ export default function NewCyclePage() {
                   ))}
                 </select>
                 <FieldDescription>
-                  Select the ROSCA group that will provide this loan
+                  Optional: Select a group if this loan is part of a group cycle. Leave empty for simple loans without groups.
                 </FieldDescription>
               </Field>
 
@@ -362,18 +343,12 @@ export default function NewCyclePage() {
                     setFormData({ ...formData, memberId: e.target.value })
                   }
                   required
-                  disabled={
-                    !formData.groupId ||
-                    loadingMembers ||
-                    groupMembers.length === 0
-                  }
+                  disabled={loadingMembers}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
                   <option value="">
-                    {!formData.groupId
-                      ? "Select a group first"
-                      : loadingMembers
+                    {loadingMembers
                       ? "Loading members..."
-                      : groupMembers.length === 0
+                      : formData.groupId && groupMembers.length === 0
                       ? "No active members in this group. Add members to the group first."
                       : "Select a member"}
                   </option>
@@ -386,10 +361,12 @@ export default function NewCyclePage() {
                 </select>
                 <FieldDescription>
                   {loadingMembers
-                    ? "Loading members from selected group..."
-                    : groupMembers.length === 0
-                    ? "No members in this group. Go to the group page to add members first."
-                    : `Select the member who will receive this loan. ${groupMembers.length} member(s) available.`}
+                    ? "Loading members..."
+                    : formData.groupId
+                    ? groupMembers.length === 0
+                      ? "No members in this group. Go to the group page to add members first."
+                      : `Select the member who will receive this loan. ${groupMembers.length} member(s) available in this group.`
+                    : `Select the member who will receive this loan. ${allMembers.length} member(s) available.`}
                 </FieldDescription>
               </Field>
 
@@ -415,29 +392,6 @@ export default function NewCyclePage() {
                 </FieldDescription>
               </Field>
 
-              <Field>
-                <FieldLabel htmlFor="interestRate">
-                  <Percent className="mr-2 h-4 w-4 inline" />
-                  Interest Rate (% per week){" "}
-                  <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  id="interestRate"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={formData.interestRate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, interestRate: e.target.value })
-                  }
-                  required
-                  placeholder="2.0"
-                />
-                <FieldDescription>
-                  Weekly interest rate (default: 2% per week)
-                </FieldDescription>
-              </Field>
 
               <Field>
                 <FieldLabel htmlFor="loanWeeks">
@@ -496,6 +450,30 @@ export default function NewCyclePage() {
                 />
                 <FieldDescription>
                   Date when the loan will be disbursed
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="disbursementMethod">
+                  Disbursement Method
+                </FieldLabel>
+                <select
+                  id="disbursementMethod"
+                  value={formData.disbursementMethod}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      disbursementMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER" | "",
+                    })
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                  <option value="">Select method</option>
+                  <option value="CASH">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                </select>
+                <FieldDescription>
+                  Method used to disburse the loan amount
                 </FieldDescription>
               </Field>
 
@@ -560,12 +538,8 @@ export default function NewCyclePage() {
                   <p className="text-sm font-medium">Loan Summary:</p>
                   <div className="text-xs text-muted-foreground space-y-1">
                     <p>Principal: ₹{loanAmount.toFixed(2)}</p>
-                    <p>
-                      Interest ({interestRate}% × {loanWeeks} weeks): ₹
-                      {totalInterest.toFixed(2)}
-                    </p>
                     <p className="font-semibold text-foreground">
-                      Total Repayment: ₹{totalRepayment.toFixed(2)}
+                      Total Repayment: ₹{totalRepayment.toFixed(2)} (Principal only, no interest)
                     </p>
                   </div>
                 </div>

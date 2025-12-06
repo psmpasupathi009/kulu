@@ -3,16 +3,12 @@ import prisma from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import {
-  calculateWeeklyPayment,
-  calculateGroupFundAllocation,
-} from "@/lib/utils";
+// Removed interest and penalty calculation imports
 
 const repayLoanSchema = z.object({
   loanId: z.string(),
   paymentDate: z.string().optional(), // Optional, defaults to now
-  isLate: z.boolean().default(false),
-  overdueWeeks: z.number().int().min(0).default(0),
+  paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(), // Payment method for repayment
 });
 
 export async function POST(request: NextRequest) {
@@ -88,78 +84,34 @@ export async function POST(request: NextRequest) {
       ? new Date(data.paymentDate)
       : new Date();
 
-    // Calculate weeks since disbursal
-    const weeksSinceDisbursal = Math.floor(
-      (paymentDate.getTime() - disbursedDate.getTime()) /
-        (7 * 24 * 60 * 60 * 1000)
-    );
-
-    // Expected week = weeks since disbursal + 1 (week 1 starts immediately)
-    const expectedWeek = weeksSinceDisbursal + 1;
-
-    // Calculate missed weeks (if current week is behind expected week)
-    const missedWeeks = Math.max(0, expectedWeek - loan.currentWeek - 1);
-
-    // Auto-detect if payment is late
-    const isLate = missedWeeks > 0 || data.isLate;
-    const overdueWeeks =
-      data.overdueWeeks > 0 ? data.overdueWeeks : missedWeeks;
-
     // Calculate weekly payment amount based on loan
-    // Weekly principal = total principal / total weeks
+    // Weekly principal = total principal / total weeks (no interest, no penalty)
     const weeklyPrincipal = loan.principal / loan.weeks;
 
-    // Weekly interest = interest rate % of remaining balance
-    // For missed weeks, interest accumulates on the remaining balance
-    const weeklyInterest = (loan.remaining * loan.interestRate) / 100;
+    // No interest or penalty - only principal payments
+    const weeklyInterest = 0;
+    const accumulatedInterest = 0;
+    const accumulatedPenalty = 0;
+    const latePenalty = 0;
 
-    // If there are missed weeks, calculate accumulated interest for those weeks
-    let accumulatedInterest = 0;
-    let accumulatedPenalty = 0;
-
-    if (missedWeeks > 0) {
-      // Calculate interest for each missed week
-      let tempRemaining = loan.remaining;
-      for (let i = 0; i < missedWeeks; i++) {
-        const missedWeekInterest = (tempRemaining * loan.interestRate) / 100;
-        accumulatedInterest += missedWeekInterest;
-        // Penalty: 0.5% of remaining balance per missed week
-        accumulatedPenalty += (tempRemaining * 0.5) / 100;
-        // For next week's calculation, principal doesn't reduce (payment wasn't made)
-        // But interest accumulates
-      }
-    }
-
-    // Total weekly payment (current week + accumulated from missed weeks)
-    const weeklyPayment = weeklyPrincipal + weeklyInterest;
-    const totalPaymentThisWeek =
-      weeklyPayment + accumulatedInterest + accumulatedPenalty;
+    // Total weekly payment (only principal)
+    const weeklyPayment = weeklyPrincipal;
+    const totalPaymentThisWeek = weeklyPayment;
 
     // Calculate new remaining balance
     const newRemaining = Math.max(0, loan.remaining - weeklyPrincipal);
-    const newWeek = loan.currentWeek + 1 + missedWeeks; // Advance by missed weeks + 1
+    const newWeek = loan.currentWeek + 1; // Advance by 1 week
 
     // Calculate payment breakdown
     const payment = {
       principal: weeklyPrincipal,
-      interest: weeklyInterest + accumulatedInterest,
-      total: weeklyPayment + accumulatedInterest,
+      interest: 0, // No interest
+      total: weeklyPayment, // Only principal
       newBalance: newRemaining,
     };
 
-    // Calculate late penalty
-    let latePenalty = accumulatedPenalty;
-    if (
-      data.isLate &&
-      data.overdueWeeks > 0 &&
-      data.overdueWeeks !== missedWeeks
-    ) {
-      // Manual override if different from calculated
-      latePenalty = (loan.remaining * 0.5 * data.overdueWeeks) / 100;
-    }
-
-    // Total payment includes: weekly payment + accumulated interest + late penalty
-    const totalPayment = payment.total + latePenalty;
+    // Total payment is only principal (no interest, no penalty)
+    const totalPayment = payment.total;
 
     // Update loan
     const updatedLoan = await prisma.loan.update({
@@ -167,11 +119,9 @@ export async function POST(request: NextRequest) {
       data: {
         remaining: payment.newBalance,
         currentWeek: newWeek,
-        totalInterest: loan.totalInterest + payment.interest,
         totalPrincipalPaid: loan.totalPrincipalPaid + payment.principal,
         status: payment.newBalance <= 0 ? "COMPLETED" : "ACTIVE",
         completedAt: payment.newBalance <= 0 ? paymentDate : null,
-        latePaymentPenalty: loan.latePaymentPenalty + latePenalty,
       },
     });
 
@@ -181,110 +131,131 @@ export async function POST(request: NextRequest) {
         loanId: loan.id,
         date: paymentDate,
         amount: payment.principal,
-        interest: payment.interest, // Interest only (not including penalty)
-        penalty: latePenalty, // Penalty recorded separately
         remaining: payment.newBalance,
         week: newWeek,
+        paymentMethod: data.paymentMethod || null,
       },
     });
 
-    // Update group fund if cycle exists
-    type InterestDistributionWithMember = {
-      id: string;
-      loanId: string;
-      groupMemberId: string;
-      amount: number;
-      distributionDate: Date;
-      createdAt: Date;
-      member: {
-        id: string;
-        userId: string;
-        name: string;
-        fatherName: string | null;
-        address1: string | null;
-        address2: string | null;
-        accountNumber: string | null;
-        phone: string | null;
-        photo: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-      };
-      contributionPercentage: number;
-    };
-    let interestDistributions: InterestDistributionWithMember[] = [];
-    if (loan.cycle?.groupFund) {
-      const groupFund = loan.cycle.groupFund;
-      const newInterestPool =
-        groupFund.interestPool + payment.interest + latePenalty;
-      const allocations = calculateGroupFundAllocation(newInterestPool);
-
-      await prisma.groupFund.update({
-        where: { id: groupFund.id },
-        data: {
-          interestPool: newInterestPool,
-          emergencyReserve: allocations.emergencyReserve,
-          insuranceFund: allocations.insuranceFund,
-          adminFee: allocations.adminFee,
-          totalFunds:
-            groupFund.investmentPool +
-            newInterestPool -
-            allocations.emergencyReserve -
-            allocations.insuranceFund -
-            allocations.adminFee,
+    // Simple flow: When loan is completed, distribute collected amount as savings to all members
+    if (updatedLoan.status === "COMPLETED") {
+      const totalPrincipalCollected = updatedLoan.totalPrincipalPaid;
+      
+      // Get all active members (no groups - all members in one pool)
+      const allMembers = await prisma.member.findMany({
+        where: {
+          // Get members who have contributed (have savings or collection payments)
+          OR: [
+            { savings: { some: {} } },
+            { collectionPayments: { some: {} } },
+          ],
         },
       });
 
-      // Distribute interest to group members when loan is completed
-      if (updatedLoan.status === "COMPLETED" && loan.cycle?.group?.members) {
-        const totalInterest = updatedLoan.totalInterest;
-        const groupMembers = loan.cycle.group.members;
+      // If we have group context, use group members; otherwise use all members
+      let membersToDistribute = allMembers;
+      if (loan.cycle?.group?.members && loan.cycle.group.members.length > 0) {
+        membersToDistribute = loan.cycle.group.members.map(gm => gm.member);
+      }
 
-        // Calculate total contributions from all active members
-        const totalContributions = groupMembers.reduce(
-          (sum, gm) => sum + gm.totalContributed,
-          0
-        );
+      // Calculate total contributions from all members
+      const totalContributions = await prisma.collectionPayment.aggregate({
+        _sum: { amount: true },
+        where: {
+          memberId: { in: membersToDistribute.map(m => m.id) },
+          status: "PAID",
+        },
+      });
 
-        // Distribute interest proportionally based on contributions
-        if (totalContributions > 0 && totalInterest > 0) {
-          const distributionDate = paymentDate;
+      const totalContributed = totalContributions._sum.amount || 0;
 
-          // Create interest distributions for each member
-          const distributionPromises = groupMembers.map(async (groupMember) => {
-            // Calculate member's share based on their contribution percentage
-            const contributionPercentage =
-              groupMember.totalContributed / totalContributions;
-            const interestAmount = totalInterest * contributionPercentage;
-
-            // Create interest distribution record
-            const distribution = await prisma.interestDistribution.create({
-              data: {
-                loanId: loan.id,
-                groupMemberId: groupMember.id,
-                amount: interestAmount,
-                distributionDate: distributionDate,
-              },
-            });
-
-            // Update group member's total interest received
-            await prisma.groupMember.update({
-              where: { id: groupMember.id },
-              data: {
-                totalInterestReceived: {
-                  increment: interestAmount,
-                },
-              },
-            });
-
-            return {
-              ...distribution,
-              member: groupMember.member,
-              contributionPercentage: contributionPercentage * 100,
-            };
+      // Distribute principal proportionally based on contributions
+      if (totalContributed > 0 && totalPrincipalCollected > 0) {
+        // Create savings distributions for each member
+        const distributionPromises = membersToDistribute.map(async (member) => {
+          // Get member's total contributions
+          const memberContributions = await prisma.collectionPayment.aggregate({
+            _sum: { amount: true },
+            where: {
+              memberId: member.id,
+              status: "PAID",
+            },
           });
 
-          interestDistributions = await Promise.all(distributionPromises);
-        }
+          const memberContributed = memberContributions._sum.amount || 0;
+          const contributionPercentage = memberContributed / totalContributed;
+          const savingsAmount = totalPrincipalCollected * contributionPercentage;
+
+          if (savingsAmount > 0) {
+            // Find or create savings record for member
+            let savings = await prisma.savings.findFirst({
+              where: { memberId: member.id },
+            });
+
+            if (!savings) {
+              savings = await prisma.savings.create({
+                data: {
+                  memberId: member.id,
+                  totalAmount: 0,
+                },
+              });
+            }
+
+            // Create savings transaction
+            const newTotal = savings.totalAmount + savingsAmount;
+            await prisma.savingsTransaction.create({
+              data: {
+                savingsId: savings.id,
+                date: paymentDate,
+                amount: savingsAmount,
+                total: newTotal,
+              },
+            });
+
+            // Update savings total
+            await prisma.savings.update({
+              where: { id: savings.id },
+              data: {
+                totalAmount: newTotal,
+              },
+            });
+          }
+
+          return {
+            memberId: member.id,
+            memberName: member.name,
+            contributionPercentage: contributionPercentage * 100,
+            savingsAmount,
+          };
+        });
+
+        await Promise.all(distributionPromises);
+      }
+
+      // Update group fund if exists
+      if (loan.cycle?.groupFund) {
+        await prisma.groupFund.update({
+          where: { id: loan.cycle.groupFund.id },
+          data: {
+            investmentPool: 0, // All distributed as savings
+            totalFunds: 0, // All distributed
+          },
+        });
+      }
+    } else {
+      // Loan not completed yet - add repayment to investment pool
+      if (loan.cycle?.groupFund) {
+        await prisma.groupFund.update({
+          where: { id: loan.cycle.groupFund.id },
+          data: {
+            investmentPool: {
+              increment: payment.principal,
+            },
+            totalFunds: {
+              increment: payment.principal,
+            },
+          },
+        });
       }
     }
 
@@ -294,17 +265,11 @@ export async function POST(request: NextRequest) {
         transaction,
         payment: {
           principal: payment.principal,
-          interest: payment.interest,
-          latePenalty,
           total: totalPayment,
           newBalance: payment.newBalance,
-          weeklyAmount: weeklyPayment, // Total amount to pay per week
-          missedWeeks: missedWeeks, // Number of weeks missed
-          expectedWeek: expectedWeek, // Expected week based on date
-          isLate: isLate, // Whether payment is late
+          weeklyAmount: weeklyPayment, // Total amount to pay per week (only principal)
+          paymentMethod: data.paymentMethod || null,
         },
-        interestDistributions:
-          interestDistributions.length > 0 ? interestDistributions : undefined,
       },
       { status: 200 }
     );

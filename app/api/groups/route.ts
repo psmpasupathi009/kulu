@@ -7,7 +7,6 @@ import { z } from "zod";
 const createGroupSchema = z.object({
   name: z.string().min(1, "Group name is required"),
   weeklyAmount: z.number().positive().optional(), // Optional: default/suggested amount
-  interestRate: z.number().positive().default(2.0),
   loanWeeks: z.number().int().positive().default(10),
 });
 
@@ -101,7 +100,6 @@ export async function POST(request: NextRequest) {
         name: data.name,
         adminId: adminUser.id,
         weeklyAmount: data.weeklyAmount,
-        interestRate: data.interestRate,
         loanWeeks: data.loanWeeks,
       },
       include: {

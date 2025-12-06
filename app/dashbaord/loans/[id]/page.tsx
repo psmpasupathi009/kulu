@@ -30,16 +30,14 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
-import { generatePaymentSchedule } from "@/lib/utils";
-import type { InterestMethod } from "@prisma/client";
 
 interface LoanTransaction {
   id: string;
   date: string;
   amount: number;
-  interest: number;
   remaining: number;
   week: number;
+  paymentMethod?: string;
 }
 
 interface Loan {
@@ -63,10 +61,8 @@ interface Loan {
   remaining: number;
   currentWeek: number;
   weeks: number;
-  interestRate: number;
-  interestMethod: string;
   status: string;
-  totalInterest: number;
+  disbursementMethod?: string;
   totalPrincipalPaid: number;
   latePaymentPenalty: number;
   disbursedAt?: string | null;
@@ -106,23 +102,21 @@ export default function LoanDetailPage() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     paymentDate: new Date().toISOString().split("T")[0],
-    isLate: false,
-    overdueWeeks: 0,
+    paymentMethod: "" as "CASH" | "UPI" | "BANK_TRANSFER" | "",
   });
 
-  // Calculate weekly payment amount based on loan
+  // Calculate weekly payment amount based on loan (no interest, no penalty)
   const calculateWeeklyPayment = (loan: Loan) => {
     if (!loan) return { principal: 0, interest: 0, total: 0 };
     const weeklyPrincipal = loan.principal / loan.weeks;
-    const weeklyInterest = (loan.remaining * loan.interestRate) / 100;
     return {
       principal: weeklyPrincipal,
-      interest: weeklyInterest,
-      total: weeklyPrincipal + weeklyInterest,
+      interest: 0, // No interest
+      total: weeklyPrincipal, // Only principal
     };
   };
 
-  // Calculate missed weeks and penalties
+  // Calculate missed weeks (no penalties)
   const calculateMissedWeeks = (loan: Loan) => {
     if (!loan || !loan.disbursedAt)
       return {
@@ -139,25 +133,14 @@ export default function LoanDetailPage() {
     const expectedWeek = weeksSinceDisbursal + 1;
     const missedWeeks = Math.max(0, expectedWeek - loan.currentWeek - 1);
 
-    // Calculate penalty for missed weeks
-    let accumulatedInterest = 0;
-    let accumulatedPenalty = 0;
-    if (missedWeeks > 0) {
-      let tempRemaining = loan.remaining;
-      for (let i = 0; i < missedWeeks; i++) {
-        const missedWeekInterest = (tempRemaining * loan.interestRate) / 100;
-        accumulatedInterest += missedWeekInterest;
-        accumulatedPenalty += (tempRemaining * 0.5) / 100;
-      }
-    }
-
+    // No penalties
     return {
       missedWeeks,
       expectedWeek,
-      isLate: missedWeeks > 0,
-      accumulatedInterest,
-      accumulatedPenalty,
-      totalPenalty: accumulatedInterest + accumulatedPenalty,
+      isLate: false, // No late payment concept
+      accumulatedInterest: 0,
+      accumulatedPenalty: 0,
+      totalPenalty: 0,
     };
   };
 
@@ -211,31 +194,21 @@ export default function LoanDetailPage() {
         body: JSON.stringify({
           loanId: loan.id,
           paymentDate: paymentForm.paymentDate,
-          isLate: paymentForm.isLate,
-          overdueWeeks: paymentForm.overdueWeeks,
+          paymentMethod: paymentForm.paymentMethod || undefined,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        let successMessage = `Payment of ₹${data.payment.total.toFixed(
+        const successMessage = `Payment of ₹${data.payment.total.toFixed(
           2
         )} recorded successfully!`;
-
-        if (data.payment.missedWeeks > 0) {
-          successMessage += `\n⚠️ ${
-            data.payment.missedWeeks
-          } week(s) missed - Penalty: ₹${data.payment.latePenalty.toFixed(
-            2
-          )} included.`;
-        }
 
         setSuccess(successMessage);
         setShowPaymentForm(false);
         setPaymentForm({
           paymentDate: new Date().toISOString().split("T")[0],
-          isLate: false,
-          overdueWeeks: 0,
+          paymentMethod: "",
         });
         // Refresh loan data
         await fetchLoan(loan.id);
@@ -283,14 +256,23 @@ export default function LoanDetailPage() {
     }
   };
 
+  // Simple payment schedule - no interest, only principal
   const paymentSchedule = loan
-    ? generatePaymentSchedule(
-        loan.principal,
-        100, // Weekly principal payment
-        loan.interestRate,
-        loan.weeks,
-        loan.interestMethod as InterestMethod
-      )
+    ? Array.from({ length: loan.weeks }, (_, i) => {
+        const week = i + 1;
+        const weeklyPrincipal = loan.principal / loan.weeks;
+        const principalRemaining = loan.principal - weeklyPrincipal * i;
+        const principalPayment = weeklyPrincipal;
+        const newBalance = Math.max(0, principalRemaining - principalPayment);
+        return {
+          week,
+          principalRemaining,
+          principalPayment,
+          interestPayment: 0,
+          totalPayment: principalPayment,
+          newBalance,
+        };
+      })
     : [];
 
   if (loading) {
@@ -336,7 +318,7 @@ export default function LoanDetailPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Interest Rate:</span>
-              <span className="font-medium">{loan.interestRate}% per week</span>
+              <span className="font-medium">0% (No interest)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Progress:</span>
@@ -345,40 +327,14 @@ export default function LoanDetailPage() {
               </span>
             </div>
             {loan.status === "ACTIVE" && loan.remaining > 0 && (
-              <>
-                {missedWeeksInfo.missedWeeks > 0 && (
-                  <div className="flex justify-between border-t pt-2 mt-2 items-center">
-                    <span className="font-semibold text-red-600">
-                      <AlertTriangle className="h-4 w-4 inline mr-1" />
-                      Missed Weeks:
-                    </span>
-                    <span className="font-bold text-lg text-red-600">
-                      {missedWeeksInfo.missedWeeks} week(s)
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t pt-2 mt-2">
-                  <span className="text-muted-foreground font-semibold">
-                    Weekly Payment:
-                  </span>
-                  <span
-                    className={`font-bold text-lg ${
-                      missedWeeksInfo.missedWeeks > 0
-                        ? "text-red-600"
-                        : "text-blue-600"
-                    }`}>
-                    ₹
-                    {(
-                      weeklyPayment.total + (missedWeeksInfo.totalPenalty ?? 0)
-                    ).toFixed(2)}
-                    {missedWeeksInfo.missedWeeks > 0 && (
-                      <span className="text-xs text-muted-foreground ml-1">
-                        (includes penalty)
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </>
+              <div className="flex justify-between border-t pt-2 mt-2">
+                <span className="text-muted-foreground font-semibold">
+                  Weekly Payment:
+                </span>
+                <span className="font-bold text-lg text-blue-600">
+                  ₹{weeklyPayment.total.toFixed(2)}
+                </span>
+              </div>
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status:</span>
@@ -395,14 +351,18 @@ export default function LoanDetailPage() {
                 {loan.status}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Interest Method:</span>
-              <span className="font-medium">
-                {loan.interestMethod === "DECLINING"
-                  ? "Declining Balance"
-                  : "Simple"}
-              </span>
-            </div>
+            {loan.disbursementMethod && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Disbursement Method:</span>
+                <span className="font-medium">
+                  {loan.disbursementMethod === "CASH"
+                    ? "Cash"
+                    : loan.disbursementMethod === "UPI"
+                    ? "UPI"
+                    : "Bank Transfer"}
+                </span>
+              </div>
+            )}
             {loan.cycle && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Cycle:</span>
@@ -425,28 +385,20 @@ export default function LoanDetailPage() {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">
-                Total Interest Paid:
-              </span>
-              <span className="font-medium">
-                ₹{loan.totalInterest.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">
                 Total Principal Paid:
               </span>
               <span className="font-medium">
                 ₹{loan.totalPrincipalPaid.toFixed(2)}
               </span>
             </div>
-            {loan.latePaymentPenalty > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Late Penalty:</span>
-                <span className="font-medium text-red-600">
-                  ₹{loan.latePaymentPenalty.toFixed(2)}
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                Remaining Balance:
+              </span>
+              <span className="font-medium">
+                ₹{loan.remaining.toFixed(2)}
+              </span>
+            </div>
             {loan.guarantor1 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Guarantor 1:</span>
@@ -485,49 +437,9 @@ export default function LoanDetailPage() {
                           </AlertDescription>
                         </Alert>
                       )}
-                      {missedWeeksInfo.missedWeeks > 0 && (
-                        <Alert variant="destructive" className="mb-3">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertDescription>
-                            <div className="font-semibold mb-1">
-                              ⚠️ {missedWeeksInfo.missedWeeks} Week(s) Missed
-                              Payment
-                            </div>
-                            <div className="text-sm space-y-1">
-                              <div className="text-red-600">
-                                Expected Week: {missedWeeksInfo.expectedWeek} |
-                                Current: {loan.currentWeek + 1}
-                              </div>
-                              <div className="text-red-600">
-                                Accumulated Interest: ₹
-                                {(missedWeeksInfo.accumulatedInterest ?? 0).toFixed(2)}
-                              </div>
-                              <div className="text-red-600">
-                                Late Penalty: ₹
-                                {(missedWeeksInfo.accumulatedPenalty ?? 0).toFixed(2)}{" "}
-                                (0.5% per week)
-                              </div>
-                              <div className="font-semibold mt-1 text-red-600">
-                                Additional Amount Due: ₹
-                                {(missedWeeksInfo.totalPenalty ?? 0).toFixed(2)}
-                              </div>
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      )}
 
-                      <div
-                        className={`p-3 rounded-lg border ${
-                          missedWeeksInfo.missedWeeks > 0
-                            ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                            : "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                        }`}>
-                        <div
-                          className={`text-sm font-semibold mb-2 ${
-                            missedWeeksInfo.missedWeeks > 0
-                              ? "text-red-900 dark:text-red-100"
-                              : "text-blue-900 dark:text-blue-100"
-                          }`}>
+                      <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                        <div className="text-sm font-semibold mb-2 text-blue-900 dark:text-blue-100">
                           Payment Breakdown
                         </div>
                         <div className="space-y-1 text-sm">
@@ -539,63 +451,17 @@ export default function LoanDetailPage() {
                               ₹{weeklyPayment.principal.toFixed(2)}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">
-                              Interest ({loan.interestRate}%):
-                            </span>
-                            <span className="font-medium">
-                              ₹{weeklyPayment.interest.toFixed(2)}
-                            </span>
-                          </div>
-                          {missedWeeksInfo.missedWeeks > 0 && (
-                            <>
-                              <div className="flex justify-between text-red-600">
-                                <span className="text-muted-foreground">
-                                  Accumulated Interest (
-                                  {missedWeeksInfo.missedWeeks} weeks):
-                                </span>
-                                <span className="font-medium">
-                                  ₹
-                                  {(missedWeeksInfo.accumulatedInterest ?? 0).toFixed(
-                                    2
-                                  )}
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-red-600">
-                                <span className="text-muted-foreground">
-                                  Late Penalty:
-                                </span>
-                                <span className="font-medium">
-                                  ₹
-                                  {(missedWeeksInfo.accumulatedPenalty ?? 0).toFixed(
-                                    2
-                                  )}
-                                </span>
-                              </div>
-                            </>
-                          )}
                           <div className="flex justify-between border-t pt-1 mt-1">
                             <span className="font-semibold">
                               Total Payment:
                             </span>
-                            <span
-                              className={`font-bold ${
-                                missedWeeksInfo.missedWeeks > 0
-                                  ? "text-red-600"
-                                  : "text-blue-600"
-                              }`}>
-                              ₹
-                              {(
-                                weeklyPayment.total +
-                                (missedWeeksInfo.totalPenalty ?? 0)
-                              ).toFixed(2)}
+                            <span className="font-bold text-blue-600">
+                              ₹{weeklyPayment.total.toFixed(2)}
                             </span>
                           </div>
                         </div>
                         <FieldDescription className="mt-2">
-                          {missedWeeksInfo.missedWeeks > 0
-                            ? "Penalties for missed weeks are automatically included"
-                            : "This amount will be automatically calculated and recorded"}
+                          Only principal payment (no interest, no penalty)
                         </FieldDescription>
                       </div>
                       <Field>
@@ -616,48 +482,28 @@ export default function LoanDetailPage() {
                         />
                       </Field>
                       <Field>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={paymentForm.isLate}
-                            onChange={(e) =>
-                              setPaymentForm({
-                                ...paymentForm,
-                                isLate: e.target.checked,
-                                overdueWeeks: e.target.checked
-                                  ? paymentForm.overdueWeeks
-                                  : 0,
-                              })
-                            }
-                            className="rounded"
-                          />
-                          <span className="text-sm">
-                            This is a late payment
-                          </span>
-                        </label>
+                        <FieldLabel htmlFor="paymentMethod">
+                          Payment Method
+                        </FieldLabel>
+                        <select
+                          id="paymentMethod"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={paymentForm.paymentMethod}
+                          onChange={(e) =>
+                            setPaymentForm({
+                              ...paymentForm,
+                              paymentMethod: e.target.value as "CASH" | "UPI" | "BANK_TRANSFER" | "",
+                            })
+                          }>
+                          <option value="">Select payment method</option>
+                          <option value="CASH">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="BANK_TRANSFER">Bank Transfer</option>
+                        </select>
+                        <FieldDescription>
+                          Select the method used for this payment
+                        </FieldDescription>
                       </Field>
-                      {paymentForm.isLate && (
-                        <Field>
-                          <FieldLabel htmlFor="overdueWeeks">
-                            Overdue Weeks
-                          </FieldLabel>
-                          <Input
-                            id="overdueWeeks"
-                            type="number"
-                            min="0"
-                            value={paymentForm.overdueWeeks}
-                            onChange={(e) =>
-                              setPaymentForm({
-                                ...paymentForm,
-                                overdueWeeks: parseInt(e.target.value) || 0,
-                              })
-                            }
-                          />
-                          <FieldDescription>
-                            Number of weeks overdue (0.5% penalty per week)
-                          </FieldDescription>
-                        </Field>
-                      )}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           className="flex-1"
@@ -702,8 +548,7 @@ export default function LoanDetailPage() {
             <div>
               <CardTitle>Payment Schedule</CardTitle>
               <CardDescription className="mt-1">
-                Complete 10-week payment breakdown with declining balance
-                interest
+                Complete 10-week payment breakdown (principal only, no interest)
               </CardDescription>
             </div>
             <Button
@@ -724,7 +569,6 @@ export default function LoanDetailPage() {
                     <TableHead>Week</TableHead>
                     <TableHead>Principal Remaining</TableHead>
                     <TableHead>Principal Payment</TableHead>
-                    <TableHead>Interest (1%)</TableHead>
                     <TableHead>Total Payment</TableHead>
                     <TableHead>New Balance</TableHead>
                   </TableRow>
@@ -752,7 +596,6 @@ export default function LoanDetailPage() {
                         <TableCell>
                           ₹{schedule.principalPayment.toFixed(2)}
                         </TableCell>
-                        <TableCell>₹{schedule.interest.toFixed(2)}</TableCell>
                         <TableCell className="font-medium">
                           ₹{schedule.totalPayment.toFixed(2)}
                         </TableCell>
@@ -764,124 +607,22 @@ export default function LoanDetailPage() {
               </Table>
             </div>
             <div className="mt-4 p-3 sm:p-4 bg-muted rounded-lg">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Total Interest:</span>
-                  <span className="ml-2 font-medium">
-                    ₹
-                    {paymentSchedule
-                      .reduce((sum, s) => sum + s.interest, 0)
-                      .toFixed(2)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">
-                    Total Repayment:
-                  </span>
-                  <span className="ml-2 font-medium">
-                    ₹
-                    {paymentSchedule
-                      .reduce((sum, s) => sum + s.totalPayment, 0)
-                      .toFixed(2)}
-                  </span>
-                </div>
+              <div className="text-sm">
+                <span className="text-muted-foreground">
+                  Total Repayment (Principal Only):
+                </span>
+                <span className="ml-2 font-medium">
+                  ₹
+                  {paymentSchedule
+                    .reduce((sum, s) => sum + s.totalPayment, 0)
+                    .toFixed(2)}
+                </span>
               </div>
             </div>
           </CardContent>
         )}
       </Card>
 
-      {loan.status === "COMPLETED" &&
-        loan.interestDistributions &&
-        loan.interestDistributions.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Interest Distribution</CardTitle>
-              <CardDescription className="mt-1">
-                Interest distributed to group members after loan completion
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                      Total Interest Distributed:
-                    </span>
-                    <span className="text-lg font-bold text-blue-600">
-                      ₹
-                      {loan.interestDistributions
-                        .reduce((sum, dist) => sum + dist.amount, 0)
-                        .toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Distributed on:{" "}
-                    {format(
-                      new Date(loan.interestDistributions[0].distributionDate),
-                      "dd/MM/yyyy"
-                    )}
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member</TableHead>
-                        <TableHead>User ID</TableHead>
-                        <TableHead>Total Contributed</TableHead>
-                        <TableHead>Interest Received</TableHead>
-                        <TableHead>Distribution Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loan.interestDistributions.map((distribution) => {
-                        const totalContributed =
-                          distribution.groupMember.totalContributed;
-                        const totalInterest =
-                          loan.interestDistributions!.reduce(
-                            (sum, d) => sum + d.amount,
-                            0
-                          );
-                        const contributionPercentage =
-                          totalInterest > 0
-                            ? (distribution.amount / totalInterest) * 100
-                            : 0;
-
-                        return (
-                          <TableRow key={distribution.id}>
-                            <TableCell className="font-medium">
-                              {distribution.groupMember.member.name}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {distribution.groupMember.member.userId}
-                            </TableCell>
-                            <TableCell>
-                              ₹{totalContributed.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="font-semibold text-green-600">
-                              ₹{distribution.amount.toFixed(2)}
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ({contributionPercentage.toFixed(1)}%)
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              {format(
-                                new Date(distribution.distributionDate),
-                                "dd/MM/yyyy"
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
       <Card>
         <CardHeader>
@@ -891,14 +632,14 @@ export default function LoanDetailPage() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>S.No</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Interest</TableHead>
-                  <TableHead>Remaining</TableHead>
-                  <TableHead>Week</TableHead>
-                </TableRow>
+                  <TableRow>
+                    <TableHead>S.No</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Principal Paid</TableHead>
+                    <TableHead>Payment Method</TableHead>
+                    <TableHead>Remaining</TableHead>
+                    <TableHead>Week</TableHead>
+                  </TableRow>
               </TableHeader>
               <TableBody>
                 {loan.transactions.length === 0 ? (
@@ -917,7 +658,15 @@ export default function LoanDetailPage() {
                         {format(new Date(transaction.date), "dd/MM/yyyy")}
                       </TableCell>
                       <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
-                      <TableCell>₹{transaction.interest.toFixed(2)}</TableCell>
+                      <TableCell>
+                        {transaction.paymentMethod
+                          ? transaction.paymentMethod === "CASH"
+                            ? "Cash"
+                            : transaction.paymentMethod === "UPI"
+                            ? "UPI"
+                            : "Bank Transfer"
+                          : "-"}
+                      </TableCell>
                       <TableCell>₹{transaction.remaining.toFixed(2)}</TableCell>
                       <TableCell>{transaction.week}</TableCell>
                     </TableRow>

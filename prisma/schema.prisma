@@ -18,22 +18,23 @@ enum UserRole {
 enum TransactionType {
   SAVINGS
   LOAN
-  INTEREST
   MISCELLANEOUS
   COLLECTION  // Weekly collection payment
-  PENALTY     // Penalty payment
 }
 
-enum InterestMethod {
-  SIMPLE      // Flat 1% per week on original principal
-  DECLINING   // 1% per week on remaining balance (recommended)
-}
+// InterestMethod enum removed - no interest calculations
 
 enum LoanStatus {
   PENDING     // Loan approved but not disbursed
   ACTIVE      // Loan disbursed and being repaid
   COMPLETED   // Fully repaid
   DEFAULTED   // Defaulted on payments
+}
+
+enum PaymentMethod {
+  CASH           // Cash payment
+  UPI            // UPI transfer
+  BANK_TRANSFER  // Bank transfer (NEFT/RTGS/IMPS)
 }
 
 model User {
@@ -60,8 +61,9 @@ model Member {
   address1      String?
   address2      String?
   accountNumber String?   @unique
+  ifscCode      String?   // IFSC code for bank transfers
+  upiId         String?   // UPI ID (e.g., name@paytm, phone@upi)
   phone         String?
-  photo         String?   // URL to photo
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -107,15 +109,12 @@ model Group {
   name          String    // Group name
   adminId       String    @db.ObjectId // Admin/Organizer user ID
   weeklyAmount  Float?    // Optional default/suggested amount (members can contribute different amounts)
-  interestRate  Float     @default(2.0) // 2% weekly interest
   loanWeeks     Int       @default(10) // 10 weeks repayment term
-  penaltyLoanPercent Float @default(10.0) // 10% penalty on loan principal
-  penaltyInterestPercent Float @default(10.0) // 10% penalty on interest
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  members       GroupMember[] // Dynamic members list
+  members       GroupMember[] // Members can join at any week
   cycles        LoanCycle[]
   collections   WeeklyCollection[]
 
@@ -134,13 +133,11 @@ model GroupMember {
   isActive      Boolean   @default(true) // Can be deactivated without deleting
   totalContributed Float   @default(0) // Total amount contributed so far
   totalReceived   Float    @default(0) // Total amount received as loans
-  benefitAmount  Float     @default(0) // Amount member is eligible to receive based on joining week
-  totalInterestReceived Float @default(0) // Total interest received from completed loans
+  benefitAmount  Float     @default(0) // Not used in simplified flow
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   collectionPayments CollectionPayment[]
-  interestDistributions InterestDistribution[]
 
   @@unique([groupId, memberId])
   @@map("group_members")
@@ -196,27 +193,22 @@ model Loan {
   sequence      LoanSequence? @relation("LoanSequenceLoan", fields: [sequenceId], references: [id], onDelete: SetNull)
   principal     Float     // Original loan amount
   remaining     Float     // Remaining balance
-  interestRate  Float     @default(2.0) // Interest rate per week
-  interestMethod InterestMethod @default(DECLINING) // Simple or Declining balance
   weeks         Int       @default(10) // Loan duration in weeks
   currentWeek   Int       @default(0)
   status        LoanStatus @default(PENDING)
   reason        String?   // Reason/purpose for the loan
-  totalInterest Float     @default(0) // Total interest paid
   totalPrincipalPaid Float @default(0) // Total principal paid
-  totalPenalty  Float     @default(0) // Total penalty paid
+  disbursementMethod PaymentMethod? // Method used to disburse loan (CASH, UPI, BANK_TRANSFER)
   disbursedAt   DateTime? // When loan was disbursed
   completedAt   DateTime? // When loan was fully repaid
   guarantor1Id  String?   @db.ObjectId
   guarantor1    Member?   @relation("LoanGuarantor1", fields: [guarantor1Id], references: [id])
   guarantor2Id  String?   @db.ObjectId
   guarantor2    Member?   @relation("LoanGuarantor2", fields: [guarantor2Id], references: [id])
-  latePaymentPenalty Float @default(0) // Additional penalty per week delayed
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   transactions  LoanTransaction[]
-  interestDistributions InterestDistribution[]
 
   @@map("loans")
 }
@@ -227,10 +219,9 @@ model LoanTransaction {
   loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
   date          DateTime
   amount        Float     // Principal payment
-  interest      Float     // Interest payment (2% of remaining)
-  penalty       Float     @default(0) // Penalty amount paid
   remaining     Float     // Remaining balance after this payment
   week          Int       // Week number (1-10)
+  paymentMethod PaymentMethod? // Method used for payment (CASH, UPI, BANK_TRANSFER)
   createdAt     DateTime  @default(now())
 
   @@map("loan_transactions")
@@ -314,32 +305,27 @@ model MonthlyStatement {
   @@map("monthly_statements")
 }
 
+// Simple Investment Pool - All members invest here
+model InvestmentPool {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  totalAmount   Float     @default(0) // Total invested by all members
+  totalLoansGiven Float   @default(0) // Total loans given from pool
+  totalLoansCollected Float @default(0) // Total loans collected (distributed as savings)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("investment_pool")
+}
+
 model GroupFund {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   cycleId       String?   @unique @db.ObjectId
   cycle         LoanCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  investmentPool Float    @default(0) // Accumulated weekly contributions
-  interestPool  Float     @default(0) // Collected interest payments
-  emergencyReserve Float  @default(0) // 10% of interest pool
-  insuranceFund Float     @default(0) // 5% of each loan for default protection
-  adminFee      Float     @default(0) // 0.5% for record-keeping
-  totalFunds    Float     @default(0) // Total available funds
+  investmentPool Float    @default(0) // Accumulated weekly contributions (distributed as savings when loan completes)
+  totalFunds    Float     @default(0) // Total available funds (distributed as savings when loan completes)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@map("group_funds")
-}
-
-model InterestDistribution {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  loanId        String    @db.ObjectId
-  loan          Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  groupMemberId String    @db.ObjectId
-  groupMember   GroupMember @relation(fields: [groupMemberId], references: [id], onDelete: Cascade)
-  amount        Float     // Interest amount distributed to this member
-  distributionDate DateTime @default(now()) // When interest was distributed
-  createdAt     DateTime  @default(now())
-
-  @@map("interest_distributions")
 }
 

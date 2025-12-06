@@ -5,13 +5,9 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 
 const createCycleSchema = z.object({
-  groupId: z.string().min(1, "Group is required"), // Group providing the loan
+  groupId: z.string().optional(), // Optional group - can work without groups
   memberId: z.string().min(1, "Member is required"), // Member receiving the loan
   loanAmount: z.number().positive("Loan amount must be positive"),
-  interestRate: z
-    .number()
-    .positive("Interest rate must be positive")
-    .default(2.0),
   loanWeeks: z
     .number()
     .int()
@@ -19,6 +15,7 @@ const createCycleSchema = z.object({
     .default(10),
   reason: z.string().optional(), // Reason for the loan
   disbursedAt: z.string().optional(), // Optional disbursal date
+  disbursementMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]).optional(), // Payment method for disbursement
   guarantor1Id: z.string().optional(),
   guarantor2Id: z.string().optional(),
 });
@@ -81,60 +78,79 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createCycleSchema.parse(body);
 
-    // Verify group exists
-    const group = await prisma.group.findUnique({
-      where: { id: data.groupId },
-      include: {
-        members: {
-          where: { isActive: true },
-        },
-      },
+    // Verify member exists
+    const member = await prisma.member.findUnique({
+      where: { id: data.memberId },
     });
 
-    if (!group) {
-      return NextResponse.json({ error: "Group not found" }, { status: 404 });
-    }
-
-    // Verify member exists and is in the group
-    const groupMember = await prisma.groupMember.findUnique({
-      where: {
-        groupId_memberId: {
-          groupId: data.groupId,
-          memberId: data.memberId,
-        },
-      },
-    });
-
-    if (!groupMember || !groupMember.isActive) {
+    if (!member) {
       return NextResponse.json(
-        { error: "Member not found in group or is inactive" },
+        { error: "Member not found" },
         { status: 404 }
       );
     }
 
-    // Get the next cycle number for this group
+    // Get group if provided, otherwise work without group
+    let group = null;
+    let groupMember = null;
+    let weeklyAmount = 100; // Default weekly amount
+
+    if (data.groupId) {
+      group = await prisma.group.findUnique({
+        where: { id: data.groupId },
+      });
+
+      if (!group) {
+        return NextResponse.json(
+          { error: "Group not found" },
+          { status: 404 }
+        );
+      }
+
+      groupMember = await prisma.groupMember.findUnique({
+        where: {
+          groupId_memberId: {
+            groupId: data.groupId,
+            memberId: data.memberId,
+          },
+        },
+      });
+
+      if (!groupMember || !groupMember.isActive) {
+        return NextResponse.json(
+          { error: "Member not found in group or is inactive" },
+          { status: 404 }
+        );
+      }
+
+      weeklyAmount = group.weeklyAmount || 100;
+    }
+
+    // Get the next cycle number (for group if provided, or global if no group)
     const lastCycle = await prisma.loanCycle.findFirst({
-      where: { groupId: data.groupId },
+      where: data.groupId ? { groupId: data.groupId } : { groupId: null },
       orderBy: { cycleNumber: "desc" },
     });
 
     const cycleNumber = lastCycle ? lastCycle.cycleNumber + 1 : 1;
 
-    // Check if cycle with this number already exists
-    const existingCycle = await prisma.loanCycle.findUnique({
-      where: {
-        groupId_cycleNumber: {
-          groupId: data.groupId,
-          cycleNumber: cycleNumber,
+    // Check if cycle with this number already exists (only if group provided)
+    if (data.groupId) {
+      const existingCycle = await prisma.loanCycle.findUnique({
+        where: {
+          groupId_cycleNumber: {
+            groupId: data.groupId,
+            cycleNumber: cycleNumber,
+          },
         },
-      },
-    });
+      });
 
-    if (existingCycle) {
-      return NextResponse.json(
-        { error: "Cycle number already exists for this group" },
-        { status: 400 }
-      );
+      if (existingCycle) {
+        return NextResponse.json(
+          { error: "Cycle number already exists for this group" },
+          { status: 400 }
+        );
+      }
     }
 
     // Calculate start date (disbursal date or now)
@@ -149,17 +165,13 @@ export async function POST(request: NextRequest) {
       const cycle = await tx.loanCycle.create({
         data: {
           cycleNumber: cycleNumber,
-          groupId: data.groupId,
+          groupId: data.groupId || null,
           startDate: startDate,
-          weeklyAmount: group.weeklyAmount || 100,
+          weeklyAmount: weeklyAmount,
           isActive: true,
           groupFund: {
             create: {
               investmentPool: 0, // Will be filled by member contributions via collections
-              interestPool: 0,
-              emergencyReserve: 0,
-              insuranceFund: 0,
-              adminFee: 0,
               totalFunds: 0,
             },
           },
@@ -174,12 +186,11 @@ export async function POST(request: NextRequest) {
           cycleId: cycle.id,
           principal: data.loanAmount,
           remaining: data.loanAmount,
-          interestRate: data.interestRate,
-          interestMethod: "DECLINING",
           weeks: data.loanWeeks,
           currentWeek: 0,
           status: "ACTIVE",
           disbursedAt: startDate,
+          disbursementMethod: data.disbursementMethod || null,
           guarantor1Id: data.guarantor1Id || null,
           guarantor2Id: data.guarantor2Id || null,
           // reason is optional - only include if provided and Prisma client supports it
@@ -187,15 +198,17 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Update group member's total received
-      await tx.groupMember.update({
-        where: { id: groupMember.id },
-        data: {
-          totalReceived: {
-            increment: data.loanAmount,
+      // Update group member's total received (if in a group)
+      if (groupMember) {
+        await tx.groupMember.update({
+          where: { id: groupMember.id },
+          data: {
+            totalReceived: {
+              increment: data.loanAmount,
+            },
           },
-        },
-      });
+        });
+      }
 
       // Deduct loan amount from group fund's investment pool
       // The loan comes from the group's pooled funds (member contributions)

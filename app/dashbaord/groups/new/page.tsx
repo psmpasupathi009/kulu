@@ -28,7 +28,7 @@ export default function NewGroupPage() {
   const [formData, setFormData] = useState({
     name: "",
     weeklyAmount: "", // Optional - can be empty
-    interestRate: 2.0,
+    interestRate: 0.0,
     loanWeeks: 10,
   });
   const [error, setError] = useState("");
@@ -51,7 +51,7 @@ export default function NewGroupPage() {
             formData.weeklyAmount && formData.weeklyAmount !== ""
               ? parseFloat(formData.weeklyAmount)
               : undefined,
-          interestRate: formData.interestRate,
+          interestRate: 0.0, // No interest
           loanWeeks: formData.loanWeeks,
         }),
       });
@@ -101,9 +101,9 @@ export default function NewGroupPage() {
           </Link>
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold">Create ROSCA Group</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Create Group</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Set up a new rotating savings and credit association group
+            Set up a new savings and loan group
           </p>
         </div>
       </div>
@@ -112,11 +112,10 @@ export default function NewGroupPage() {
         <CardHeader>
           <CardTitle>Group Information</CardTitle>
           <CardDescription>
-            Configure the ROSCA group parameters. Members can join dynamically
-            at any time with different joining weeks. Each member can contribute
-            a different amount weekly based on their capacity. Benefits are
-            calculated based on joining week and contribution amount. Admin can
-            also join groups as members.
+            Configure the group parameters. Members can join at any week and invest weekly. 
+            New members joining mid-cycle need to pay backdated weekly payments. 
+            Loans are given from the pool and repaid within 10 weeks (principal only). 
+            When loans are completed, the collected amount is distributed as savings to all members.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
@@ -142,14 +141,14 @@ export default function NewGroupPage() {
                 <Input
                   id="name"
                   type="text"
-                  placeholder="ROSCA Group 1"
+                  placeholder="Group 1"
                   value={formData.name}
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
                   required
                 />
-                <FieldDescription>Name for this ROSCA group</FieldDescription>
+                <FieldDescription>Name for this group</FieldDescription>
               </Field>
 
               <Field>
@@ -178,30 +177,6 @@ export default function NewGroupPage() {
                 </FieldDescription>
               </Field>
 
-              <Field>
-                <FieldLabel htmlFor="interestRate">
-                  <Percent className="mr-2 h-4 w-4 inline" />
-                  Interest Rate (%) <span className="text-destructive">*</span>
-                </FieldLabel>
-                <Input
-                  id="interestRate"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={formData.interestRate}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      interestRate: parseFloat(e.target.value) || 2.0,
-                    })
-                  }
-                  required
-                />
-                <FieldDescription>
-                  Weekly interest rate (default: 2% per week)
-                </FieldDescription>
-              </Field>
 
               <Field>
                 <FieldLabel htmlFor="loanWeeks">

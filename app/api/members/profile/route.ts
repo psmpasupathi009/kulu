@@ -58,15 +58,6 @@ export async function GET(request: NextRequest) {
             transactions: {
               orderBy: { date: "desc" },
             },
-            interestDistributions: {
-              include: {
-                groupMember: {
-                  include: {
-                    member: true,
-                  },
-                },
-              },
-            },
           },
           orderBy: { createdAt: "desc" },
         },
@@ -83,21 +74,6 @@ export async function GET(request: NextRequest) {
                 },
               },
               orderBy: { paymentDate: "desc" },
-            },
-            interestDistributions: {
-              include: {
-                loan: {
-                  include: {
-                    member: true,
-                    cycle: {
-                      include: {
-                        group: true,
-                      },
-                    },
-                  },
-                },
-              },
-              orderBy: { distributionDate: "desc" },
             },
           },
         },
@@ -128,11 +104,8 @@ export async function GET(request: NextRequest) {
       0
     );
 
-    // Calculate total interest received from all groups
-    const totalInterestReceived = member.groupMembers.reduce(
-      (sum, gm) => sum + gm.totalInterestReceived,
-      0
-    );
+    // No interest in simplified flow
+    const totalInterestReceived = 0;
 
     // Calculate total contributions across all groups
     const totalContributions = member.groupMembers.reduce(
@@ -146,16 +119,8 @@ export async function GET(request: NextRequest) {
       select: { email: true },
     });
 
-    // Get all interest distributions
-    const allInterestDistributions = member.groupMembers.flatMap((gm) =>
-      gm.interestDistributions.map((dist) => ({
-        ...dist,
-        group: gm.group,
-        groupMember: {
-          totalContributed: gm.totalContributed,
-        },
-      }))
-    );
+    // No interest distributions in simplified flow
+    const allInterestDistributions: any[] = [];
 
     return NextResponse.json(
       {
@@ -165,7 +130,6 @@ export async function GET(request: NextRequest) {
           name: member.name,
           email: userEmail?.email || null,
           phone: member.phone,
-          photo: member.photo,
           address1: member.address1,
           address2: member.address2,
           accountNumber: member.accountNumber,
@@ -194,7 +158,6 @@ export async function GET(request: NextRequest) {
           totalContributed: gm.totalContributed,
           totalReceived: gm.totalReceived,
           benefitAmount: gm.benefitAmount,
-          totalInterestReceived: gm.totalInterestReceived,
           collections: gm.collectionPayments,
         })),
         interestDistributions: allInterestDistributions,

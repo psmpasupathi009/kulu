@@ -12,8 +12,9 @@ const updateMemberSchema = z.object({
   address1: z.string().optional(),
   address2: z.string().optional(),
   accountNumber: z.string().optional(),
+  ifscCode: z.string().optional(),
+  upiId: z.string().optional(),
   phone: z.string().optional(),
-  photo: z.string().optional(),
 });
 
 export async function GET(

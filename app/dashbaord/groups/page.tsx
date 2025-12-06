@@ -99,7 +99,7 @@ export default function GroupsPage() {
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">ROSCA Groups</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Groups</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
             Manage rotating savings and credit association groups
           </p>
@@ -116,7 +116,8 @@ export default function GroupsPage() {
         <CardHeader>
           <CardTitle>Groups List</CardTitle>
           <CardDescription>
-            All ROSCA groups in the system. Members can join dynamically at any
+            All groups in the system. Members can join at any week and invest weekly. 
+            New members need to pay backdated payments. Loans are repaid within 10 weeks (principal only).
             time with different joining weeks. Pool amount is calculated based
             on active members each week. Admin can also join groups as members.
           </CardDescription>
@@ -129,7 +130,6 @@ export default function GroupsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Active Members</TableHead>
                   <TableHead>Weekly Amount</TableHead>
-                  <TableHead>Interest Rate</TableHead>
                   <TableHead>Loan Weeks</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
@@ -161,7 +161,6 @@ export default function GroupsPage() {
                           </div>
                         </TableCell>
                         <TableCell>₹{group.weeklyAmount.toFixed(2)}</TableCell>
-                        <TableCell>{group.interestRate}%</TableCell>
                         <TableCell>{group.loanWeeks} weeks</TableCell>
                         <TableCell>
                           <span

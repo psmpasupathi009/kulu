@@ -3,7 +3,6 @@ import prisma from '@/lib/prisma'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
-import { calculateGroupFundAllocation } from '@/lib/utils'
 
 const addInvestmentSchema = z.object({
   cycleId: z.string(),
@@ -90,10 +89,6 @@ export async function POST(request: NextRequest) {
         data: {
           cycleId: data.cycleId,
           investmentPool: 0,
-          interestPool: 0,
-          emergencyReserve: 0,
-          insuranceFund: 0,
-          adminFee: 0,
           totalFunds: 0,
         },
       })

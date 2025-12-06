@@ -12,8 +12,9 @@ const createMemberSchema = z.object({
   address1: z.string().optional(),
   address2: z.string().optional(),
   accountNumber: z.string().optional(),
+  ifscCode: z.string().optional(),
+  upiId: z.string().optional(),
   phone: z.string().optional(),
-  photo: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -103,8 +104,9 @@ export async function POST(request: NextRequest) {
           address1: data.address1,
           address2: data.address2,
           accountNumber: data.accountNumber,
+          ifscCode: data.ifscCode,
+          upiId: data.upiId,
           phone: data.phone,
-          photo: data.photo,
         },
       });
 
